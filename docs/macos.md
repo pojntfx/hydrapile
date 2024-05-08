@@ -161,4 +161,33 @@ exit
 cp ~/.darling/Users/lisa/test/example-1 /data/
 # You can run `example-1` on a real Mac
 ```
+
+```shell
+rm -rf ~/delfin
+git clone https://codeberg.org/avery42/delfin.git ~/delfin
+cd ~/delfin
+
+cargo build # You might have to re-run this a few times to to misreported `signal: 11, SIGSEGV: invalid memory reference` errors
+
+# The steps below will fail due to `Symbol not found: (_mkfifoat)` issues of recent Python (see https://github.com/python/cpython/issues/100384) and various Rust build issues
+meson setup build --wipe
+cd build
+meson compile
+```
+
+```shell
+curl -Lo /tmp/go.pkg https://go.dev/dl/go1.21.10.darwin-amd64.pkg # We need to use v.1.21.10 - newer version fail with https://github.com/darlinghq/darling/issues/1178
+sudo installer -pkg /tmp/go.pkg -target / # Will fail; feel free to ignore
+
+git clone https://github.com/pojntfx/multiplex.git
+cd multiplex
+
+export GOPROXY=direct # Needed due to https://github.com/darlinghq/darling/issues/1454
+go generate -x ./... # Might need to stop/start this a few times if it hangs
+
+# Build still fails with:
+# internal/goarch
+# unexpected fault address 0x20801e0
+# fatal error: fault
+# [signal SIGSEGV: segmentation violation code=0x1 addr=0x20801e0 pc=0x12f0383]
 ```
