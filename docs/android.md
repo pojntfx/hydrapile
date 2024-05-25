@@ -434,3 +434,61 @@ rm -rf ~/.alpinelinux_container
 
 # We should probably follow https://git.alpinelinux.org/aports/tree/testing/proot/APKBUILD to build instead with upstream proot
 ```
+
+```apk
+# Contributor: Daniel Santana <daniel@santana.tech>
+# Maintainer: Daniel Santana <daniel@santana.tech>
+pkgname=proot
+pkgver=5.4.0
+pkgrel=0
+pkgdesc="User-space implementation of chroot, mount --bind, and binfmt_misc"
+url="https://proot-me.github.io"
+arch="aarch64 armhf armv7 x86 x86_64"
+license="GPL-2.0-or-later"
+checkdepends="bash coreutils grep lzop mcookie python3 strace"
+makedepends="
+        bsd-compat-headers
+        libarchive-dev
+        linux-headers
+        py3-docutils
+        talloc-dev
+        talloc-static
+        uthash-dev
+        "
+subpackages="$pkgname-doc $pkgname-static"
+source="https://github.com/termux/proot/archive/refs/heads/master.tar.gz
+        "
+options="!check"  # FIXME: several tests are failing
+
+builddir="$srcdir"/proot-master
+prepare() {
+        default_prepare
+        cp -r src src-static
+}
+
+build() {
+        make -C src proot VERSION=$pkgver
+        make -C src-static proot VERSION=$pkgver LDFLAGS="$LDFLAGS -static -ltalloc"
+        make -C doc proot/man.1
+}
+
+check() {
+        ln -sfv /usr/bin/python3 python
+        PATH="$PATH:$PWD" make -C test
+}
+
+package() {
+        install -Dm 0755 ./src/proot "$pkgdir"/usr/bin/proot
+        install -Dm 0644 ./doc/proot/man.1 "$pkgdir"/usr/share/man/man1/proot.1
+}
+
+static() {
+        pkgdesc="$pkgdesc (built as static binary)"
+
+        install -Dm 0755 "$builddir"/src-static/proot "$subpkgdir"/usr/bin/proot.static
+}
+
+sha512sums="
+b48a26db8423de9df8eab4719fd2e72c9c8dd6c2168a2c059e57b5dc4adfc58e2e61c483ae97c7bb2676fc58d00f1b06fafe6e355033711e5a285dadfb48101e  master.tar.gz
+"
+```
