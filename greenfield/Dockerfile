@@ -17,8 +17,6 @@ FROM debian:bookworm
 RUN apt update
 RUN apt install -y libffi8 libudev1 libgbm1 libgraphene-1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-gl libosmesa6 libdrm2 libopengl0 libglvnd0 libglx0 libglapi-mesa libegl1-mesa libglx-mesa0 xwayland xauth xxd inotify-tools npm sudo supervisor
 
-RUN npm i -g serve
-
 COPY --from=build /work /work
 
 RUN useradd -m -s /bin/bash user
