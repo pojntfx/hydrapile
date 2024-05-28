@@ -1,0 +1,38 @@
+{
+  "/kgx": {
+    "name": "Console",
+    "executable": "kgx",
+    "args": [],
+    "env": {}
+  },
+  "/gtk4-demo": {
+    "name": "",
+    "executable": "gtk4-demo",
+    "args": [],
+    "env": {}
+  },
+  "/gtk4-widget-factory": {
+    "name": "",
+    "executable": "gtk4-widget-factory",
+    "args": [],
+    "env": {}
+  },
+  "/adwaita-1-demo": {
+    "name": "",
+    "executable": "adwaita-1-demo",
+    "args": [],
+    "env": {}
+  },
+  "/glxgears": {
+    "name": "glxgears",
+    "executable": "glxgears",
+    "args": [],
+    "env": {}
+  },
+  "/weston-terminal": {
+    "name": "weston-terminal",
+    "executable": "weston-terminal",
+    "args": [],
+    "env": {}
+  }
+}
