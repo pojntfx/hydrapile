@@ -35,14 +35,15 @@ docker run -it --privileged -v /dev/dri:/dev/dri -p 8080:8080 -p 8081:8081 pojnt
 docker export "$(docker create pojntfx/greenfield)" --output="/tmp/rootfs.tar" # This can take a while
 
 rm -rf ~/.proot-container && mkdir -p ~/.proot-container
-tar -xf /tmp/rootfs.tar -C ~/.proot-container # This can take a while
+proot --link2symlink tar -xf /tmp/rootfs.tar -C ~/.proot-container # This can take a while; we need to execute this in `proot` or the hard links fail during extraction
 
 echo -e 'nameserver 8.8.8.8\nnameserver 8.8.4.4' > ~/.proot-container/etc/resolv.conf
 echo -e '127.0.0.1	localhost\n::1     localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters' > ~/.proot-container/etc/hosts
 
 rm -rf ~/.proot-container/proc && mkdir -p ~/.proot-container/proc
 
-proot --link2symlink --kill-on-exit --kernel-release=6.8.10 -b /dev -b /proc -b /sys -b /proc/self/fd:/dev/fd -b /proc/self/fd/0:/dev/stdin -b /proc/self/fd/1:/dev/stdout -b /proc/self/fd/2:/dev/stderr -b ~/.proot-container/proc/.version:/proc/version -r ~/.proot-container -0 -w /root -b ~/.proot-container/root:/dev/shm /bin/su -l user
+unset LD_PRELOAD
+proot --link2symlink --kill-on-exit --kernel-release=6.8.10 -b /dev -b /proc -b /sys -b /proc/self/fd:/dev/fd -b /proc/self/fd/0:/dev/stdin -b /proc/self/fd/1:/dev/stdout -b /proc/self/fd/2:/dev/stderr -b ~/.proot-container/proc/.stat:/proc/stat -b ~/.proot-container/proc/.version:/proc/version -b ~/.proot-container/proc/.loadavg:/proc/loadavg -b ~/.proot-container/proc/.vmstat:/proc/vmstat -b ~/.proot-container/proc/.uptime:/proc/uptime -r ~/.proot-container -0 -w /root -b ~/.proot-container/root:/dev/shm /bin/su -l user
 ```
 
 ```shell
