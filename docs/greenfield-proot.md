@@ -52,6 +52,11 @@ export XDG_RUNTIME_DIR="/home/user/.xdg-runtime-dir"
 export XAUTHORITY="/tmp/.X11-unix/Xauthority"
 
 mkdir -p /tmp/.X11-unix && touch "$XAUTHORITY" && xauth add :1 . "$(xxd -l 16 -p /dev/urandom)" && supervisord -c /etc/supervisor/supervisord.conf
+
+# On Termux we get:
+# Can't open device path: /dev/dri/renderD128: Permission denied
+# Can't initialize EGL, wl_dmabuf and wl_drm disabled.
+# Which seems to be why it won't render.
 ```
 
 ## Accessing the Applications
