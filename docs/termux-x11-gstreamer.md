@@ -9,7 +9,7 @@ curl 'https://github.com/pojntfx.keys' > ~/.ssh/authorized_keys
 sshd
 ```
 
-Setting up GL:
+Setting up GL/hardware acceleration:
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -39,19 +39,23 @@ export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0
 glxgears
 ```
 
-H264 encoding in guest:
+Encoding in guest:
 
 ```shell
 # In new tmux pane
 apt install -y gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-x gstreamer1.0-libav
 
-# UDP and RTP
-gst-launch-1.0 ximagesrc use-damage=0 ! videorate ! video/x-raw,framerate=60/1 ! clockoverlay shaded-background=true font-desc="Sans 38" ! videoconvert ! queue ! x264enc tune=zerolatency speed-preset=superfast ! rtph264pay config-interval=1 pt=96 ! queue ! udpsink host=0.0.0.0 port=5000
-# TCP
+export XDG_RUNTIME_DIR=/tmp
+
+# H264/UDP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! x264enc speed-preset=superfast tune=zerolatency ! video/x-h264,stream-format=byte-stream ! queue ! udpsink host=0.0.0.0 port=5000
+# H264/TCP
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! x264enc speed-preset=superfast tune=zerolatency ! video/x-h264,stream-format=byte-stream ! queue ! tcpserversink host=0.0.0.0 port=5000
+# VP8/TCP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! vp8enc deadline=1 ! webmmux ! queue ! tcpserversink host=0.0.0.0 port=5000
 ```
 
-H264 decoding in guest (we can't do H264 encoding on the host because the `x264enc` element isn't available):
+Decoding in guest:
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -62,42 +66,33 @@ termux-x11 :0 &
 proot-distro login debian --shared-tmp
 
 export GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.0 DISPLAY=:0 XDG_RUNTIME_DIR=/tmp # We can't use virpipe here or we get `*** stack smashing detected ***: terminated`
-# UDP and RTP
-gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink sync=false
-# TCP
-gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
+
+# H264/UDP
+gst-launch-1.0 udpsrc port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+# H264/TCP
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+# VP8/TCP
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! matroskademux ! queue ! vp8dec ! videoconvert ! autovideosink
 ```
 
-H264 decoding on host (leads to artifacting):
+Encoding on host:
 
-```shell
-ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
+> This doesn't work yet; we can connect to the X server, but we get no output
 
-pkg install -y gst-libav gst-plugins-bad gst-plugins-base gst-plugins-gl-headers gst-plugins-good gst-plugins-ugly gstreamer
-
-export DISPLAY=:0
-termux-x11 :0 &
-
-export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
-# UDP and RTP
-gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink sync=false
-# TCP
-gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
-```
-
-VP9 encoding on host (very slow):
+> There is no `x264enc` in Termux's GStreamer on the host, so this is VP8 (or VP9, AV1 etc.) only
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
 
 export XAUTHORITY=/data/data/com.termux/files/usr/tmp/xvfb-run.LrURH3/Xauthority # Adjust this to the real path
-
 export DISPLAY=:99
 export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
-gst-launch-1.0 ximagesrc use-damage=0 ! videorate ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! vp9enc ! rtpvp9pay pt=96 ! queue ! udpsink host=0.0.0.0 port=5000
+
+# VP8/TCP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! vp8enc deadline=1 ! webmmux ! queue ! tcpserversink host=0.0.0.0 port=5000
 ```
 
-VP9 decoding on host (very slow):
+Decoding on host:
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -105,6 +100,12 @@ ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
 export DISPLAY=:0
 termux-x11 :0 &
 
-export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/tmp
-gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, payload=96, encoding-name=VP9, clock-rate=90000 ! rtpvp9depay ! vp9dec ! videoconvert ! autovideosink sync=false
+export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
+
+# H264/UDP
+gst-launch-1.0 udpsrc port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+# H264/TCP
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+# VP8/TCP
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! matroskademux ! queue ! vp8dec ! videoconvert ! autovideosink
 ```
