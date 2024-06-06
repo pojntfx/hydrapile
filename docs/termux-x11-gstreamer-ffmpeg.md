@@ -1,6 +1,6 @@
 # Termux X11-based GStreamer and `ffmpeg` Experiments
 
-Setting up SSH:
+SSH:
 
 ```shell
 # In Termux
@@ -9,7 +9,7 @@ curl 'https://github.com/pojntfx.keys' > ~/.ssh/authorized_keys
 sshd
 ```
 
-Setting up GL/hardware acceleration:
+Hardware acceleration with `virglrenderer-android` (and optionally `virglrenderer-mesa-zink` for hardware-accelerated decoding):
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -17,26 +17,34 @@ ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
 pkg install virglrenderer-android
 virgl_test_server_android &
 
-proot-distro install debian
-proot-distro login debian --shared-tmp
+pkg install mesa-zink virglrenderer-mesa-zink vulkan-loader-android
+
+export MESA_NO_ERROR=1 MESA_GL_VERSION_OVERRIDE=4.3COMPAT MESA_GLES_VERSION_OVERRIDE=3.2 GALLIUM_DRIVER=zink ZINK_DESCRIPTORS=lazy XDG_RUNTIME_DIR="${TMPDIR}"
+
+virgl_test_server --use-egl-surfaceless --use-gles &
 ```
 
-Setting up headless X11:
+Headless X11:
 
 ```shell
+proot-distro install debian
+proot-distro login debian --shared-tmp
+
 apt install -y xvfb tmux
-xvfb-run --server-args="-screen 0 360x722x24+32" tmux
+xvfb-run --server-args="-screen 0 720x1440x24+32" tmux
 # Or:
-# Xvfb :1 -screen 0 360x722x24+32 &
+# Xvfb :1 -screen 0 720x1440x24+32 &
 # tmux
 ```
 
-Starting a hardware-accelerated X11 application:
+Hardware-accelerated X11 application:
 
 ```shell
-apt install -y mesa-utils
-export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0
-glxgears -fullscreen
+apt install -y mesa-utils mangohud
+
+export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 # For both `virglrenderer-android` and `virglrenderer-mesa-zink`; using just `virglrenderer-mesa-zink` breaks for `glxgears` (other non-GL applications are accelerated well though!)
+
+mangohud glxgears -fullscreen
 ```
 
 Encoding in guest:
@@ -45,7 +53,7 @@ Encoding in guest:
 # In new tmux pane
 apt install -y gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-x gstreamer1.0-libav
 
-export XDG_RUNTIME_DIR=/tmp
+export XDG_RUNTIME_DIR="${TMPDIR}"
 
 # H264/UDP
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! x264enc speed-preset=superfast tune=zerolatency ! video/x-h264,stream-format=byte-stream ! queue ! udpsink host=0.0.0.0 port=5000
@@ -57,6 +65,14 @@ gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconver
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! queue ! udpsink host=0.0.0.0 port=5000
 # MJPEG/TCP
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! jpegenc ! multipartmux ! queue ! tcpserversink host=0.0.0.0 port=5000
+# Raw/TCP (very high-bandwidth)
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! tcpserversink host=0.0.0.0 port=5000
+# Raw/FIFO (very high-bandwidth)
+rm -f $TMPDIR/mydisplay.pipe && mkfifo $TMPDIR/mydisplay.pipe
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! filesink location=$TMPDIR/mydisplay.pipe
+# Raw/Shared Memory (very high-bandwidth)
+rm -f $TMPDIR/mydisplay.shm
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! shmsink socket-path=$TMPDIR/mydisplay.shm sync=false wait-for-connection=true
 ```
 
 Decoding in guest:
@@ -69,7 +85,7 @@ termux-x11 :0 &
 
 proot-distro login debian --shared-tmp
 
-export GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.0 DISPLAY=:0 XDG_RUNTIME_DIR=/tmp # We can't use virpipe here or we get `*** stack smashing detected ***: terminated`
+export GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.0 DISPLAY=:0 XDG_RUNTIME_DIR="${TMPDIR}" # We can't use `virglrenderer` or `virglrenderer-mesa-zink` here or we get `*** stack smashing detected ***: terminated` or `glx: failed to create drisw screen` respectively
 
 # H264/UDP
 gst-launch-1.0 udpsrc port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
@@ -85,27 +101,14 @@ gst-launch-1.0 udpsrc port=5000 caps="application/x-rtp, media=(string)video, cl
 # MJPEG/TCP
 gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! multipartdemux ! jpegdec ! videoconvert ! autovideosink
 ffplay -f mjpeg -i tcp://localhost:5000 -flags low_delay -fflags nobuffer -analyzeduration 0 -probesize 32
-```
-
-Encoding on host:
-
-> This doesn't work yet; we can connect to the X server, but we get no output
-
-> There is no `x264enc` in Termux's GStreamer on the host
-
-```shell
-ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
-
-export XAUTHORITY=/data/data/com.termux/files/usr/tmp/xvfb-run.LrURH3/Xauthority # Adjust this to the real path
-export DISPLAY=:99
-export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
-
-# VP8/TCP
-gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! vp8enc deadline=1 ! webmmux ! queue ! tcpserversink host=0.0.0.0 port=5000
-# MJPEG/UDP
-gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! queue ! udpsink host=0.0.0.0 port=5000
-# MJPEG/TCP
-gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! jpegenc ! multipartmux ! queue ! tcpserversink host=0.0.0.0 port=5000
+# Raw/TCP (very high-bandwidth)
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! videoparse width=720 height=1440 framerate=60/1 format=bgra ! queue ! videoconvert ! autovideosink
+ffplay -f rawvideo -pixel_format rgb32 -video_size 720x1440 -framerate 60 -i tcp://localhost:5000 -flags low_delay -fflags nobuffer -analyzeduration 0 -probesize 32
+# Raw/FIFO (very high-bandwidth)
+gst-launch-1.0 filesrc location=$TMPDIR/mydisplay.pipe ! videoparse width=720 height=1440 framerate=60/1 format=bgra ! queue ! videoconvert ! autovideosink
+ffplay -f rawvideo -pixel_format rgb32 -video_size 720x1440 -framerate 60 -i $TMPDIR/mydisplay.pipe -flags low_delay -fflags nobuffer -analyzeduration 0 -probesize 32
+# Raw/Shared Memory (very high-bandwidth) - we can't use this to communicate between proot and non-proot!
+gst-launch-1.0 shmsrc socket-path=$TMPDIR/mydisplay.shm ! video/x-raw,framerate=60/1,width=720,height=1440,format=BGRA ! queue max-size-buffers=1 leaky=2 ! videoconvert ! autovideosink
 ```
 
 Decoding on host:
@@ -118,7 +121,8 @@ ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
 export DISPLAY=:0
 termux-x11 :0 &
 
-export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
+export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 # For `virglrenderer-android`
+export MESA_NO_ERROR=1 MESA_GL_VERSION_OVERRIDE=4.3COMPAT MESA_GLES_VERSION_OVERRIDE=3.2 GALLIUM_DRIVER=zink ZINK_DESCRIPTORS=lazy XDG_RUNTIME_DIR="${TMPDIR}" # For `virglrenderer-mesa-zink`
 
 # Use same commands from "Decoding in guest"
 ```
