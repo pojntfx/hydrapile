@@ -1,4 +1,4 @@
-# Termux X11-based GStreamer Experiments
+# Termux X11-based GStreamer and `ffmpeg` Experiments
 
 Setting up SSH:
 
@@ -36,7 +36,7 @@ Starting a hardware-accelerated X11 application:
 ```shell
 apt install -y mesa-utils
 export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0
-glxgears
+glxgears -fullscreen
 ```
 
 Encoding in guest:
@@ -53,6 +53,10 @@ gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconver
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! x264enc speed-preset=superfast tune=zerolatency ! video/x-h264,stream-format=byte-stream ! queue ! tcpserversink host=0.0.0.0 port=5000
 # VP8/TCP
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! vp8enc deadline=1 ! webmmux ! queue ! tcpserversink host=0.0.0.0 port=5000
+# MJPEG/UDP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! queue ! udpsink host=0.0.0.0 port=5000
+# MJPEG/TCP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! clockoverlay shaded-background=true font-desc="Sans 38" ! queue ! jpegenc ! multipartmux ! queue ! tcpserversink host=0.0.0.0 port=5000
 ```
 
 Decoding in guest:
@@ -69,17 +73,25 @@ export GALLIUM_DRIVER=llvmpipe MESA_GL_VERSION_OVERRIDE=4.0 DISPLAY=:0 XDG_RUNTI
 
 # H264/UDP
 gst-launch-1.0 udpsrc port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+ffplay -i udp://localhost:5000 -codec:v h264 -flags low_delay -fflags nobuffer
 # H264/TCP
 gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
+ffplay -i tcp://localhost:5000 -codec:v h264 -flags low_delay -fflags nobuffer
 # VP8/TCP
 gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! matroskademux ! queue ! vp8dec ! videoconvert ! autovideosink
+ffplay -i tcp://localhost:5000 -codec:v vp8 -flags low_delay -fflags nobuffer -analyzeduration 0 -probesize 32
+# MJPEG/UDP
+gst-launch-1.0 udpsrc port=5000 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG, payload=(int)26" ! rtpjpegdepay ! queue ! jpegdec ! videoconvert ! autovideosink
+# MJPEG/TCP
+gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! multipartdemux ! jpegdec ! videoconvert ! autovideosink
+ffplay -f mjpeg -i tcp://localhost:5000 -flags low_delay -fflags nobuffer -analyzeduration 0 -probesize 32
 ```
 
 Encoding on host:
 
 > This doesn't work yet; we can connect to the X server, but we get no output
 
-> There is no `x264enc` in Termux's GStreamer on the host, so this is VP8 (or VP9, AV1 etc.) only
+> There is no `x264enc` in Termux's GStreamer on the host
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -90,9 +102,15 @@ export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data
 
 # VP8/TCP
 gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! vp8enc deadline=1 ! webmmux ! queue ! tcpserversink host=0.0.0.0 port=5000
+# MJPEG/UDP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! video/x-raw,format=I420 ! jpegenc ! rtpjpegpay ! queue ! udpsink host=0.0.0.0 port=5000
+# MJPEG/TCP
+gst-launch-1.0 ximagesrc use-damage=0 ! video/x-raw,framerate=60/1 ! videoconvert ! queue ! jpegenc ! multipartmux ! queue ! tcpserversink host=0.0.0.0 port=5000
 ```
 
 Decoding on host:
+
+> This doesn't work yet with GStreamer; use `ffplay` instead
 
 ```shell
 ssh -p 8022 u0_a395@fels-google-pixel-6-pro.koi-monitor.ts.net
@@ -102,10 +120,5 @@ termux-x11 :0 &
 
 export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 XDG_RUNTIME_DIR=/data/data/com.termux/files/usr/tmp
 
-# H264/UDP
-gst-launch-1.0 udpsrc port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
-# H264/TCP
-gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! h264parse ! queue ! avdec_h264 ! videoconvert ! autovideosink
-# VP8/TCP
-gst-launch-1.0 tcpclientsrc host=localhost port=5000 ! matroskademux ! queue ! vp8dec ! videoconvert ! autovideosink
+# Use same commands from "Decoding in guest"
 ```
