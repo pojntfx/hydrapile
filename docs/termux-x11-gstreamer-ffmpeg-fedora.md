@@ -125,6 +125,7 @@ termux-x11 :0 &
 
 export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 # For `virglrenderer-android`
 export MESA_NO_ERROR=1 MESA_GL_VERSION_OVERRIDE=4.3COMPAT MESA_GLES_VERSION_OVERRIDE=3.2 GALLIUM_DRIVER=zink ZINK_DESCRIPTORS=lazy XDG_RUNTIME_DIR="${TMPDIR}" # For `virglrenderer-mesa-zink`
+# If the decoder doesn't run, use `export GALLIUM_DRIVER=llvmpipe`
 
 # Use same commands from "Decoding in guest"
 ```
